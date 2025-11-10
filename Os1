@@ -1,0 +1,192 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define FILENAME "addressbook.dat"
+
+struct Address {
+    char name[50];
+    char phone[15];
+    char email[50];
+};
+
+/* Utility to read a line of input safely and strip newline */
+void read_line(const char *prompt, char *buf, size_t size) {
+    if (prompt) printf("%s", prompt);
+    if (fgets(buf, (int)size, stdin) == NULL) {
+        buf[0] = '\0';
+        return;
+    }
+    size_t len = strlen(buf);
+    if (len && buf[len - 1] == '\n') buf[len - 1] = '\0';
+}
+
+/* Function declarations */
+void createAddressBook();
+void viewAddressBook();
+void insertRecord();
+void deleteRecord();
+void modifyRecord();
+
+int main(void) {
+    char line[32];
+
+    while (1) {
+        printf("\n===== ADDRESS BOOK MENU =====\n");
+        printf("1. Create Address Book\n");
+        printf("2. View Address Book\n");
+        printf("3. Insert a Record\n");
+        printf("4. Delete a Record\n");
+        printf("5. Modify a Record\n");
+        printf("6. Exit\n");
+        read_line("Enter your choice: ", line, sizeof(line));
+
+        int choice = atoi(line);
+
+        switch (choice) {
+            case 1: createAddressBook(); break;
+            case 2: viewAddressBook(); break;
+            case 3: insertRecord(); break;
+            case 4: deleteRecord(); break;
+            case 5: modifyRecord(); break;
+            case 6: exit(0);
+            default: printf("Invalid choice. Try again.\n");
+        }
+    }
+    return 0;
+}
+
+void createAddressBook() {
+    FILE *fp = fopen(FILENAME, "wb"); /* binary write to create/truncate */
+    if (fp == NULL) {
+        perror("Error creating address book");
+        return;
+    }
+    printf("Address Book created successfully.\n");
+    fclose(fp);
+}
+
+void viewAddressBook() {
+    struct Address addr;
+    FILE *fp = fopen(FILENAME, "rb"); /* binary read */
+
+    if (fp == NULL) {
+        printf("No address book found. Create it first.\n");
+        return;
+    }
+
+    printf("\n----- ADDRESS BOOK CONTENT -----\n");
+    int empty = 1;
+    while (fread(&addr, sizeof(addr), 1, fp) == 1) {
+        empty = 0;
+        printf("Name : %s\n", addr.name);
+        printf("Phone: %s\n", addr.phone);
+        printf("Email: %s\n\n", addr.email);
+    }
+    if (empty) printf("Address book is empty.\n");
+    fclose(fp);
+}
+
+void insertRecord() {
+    FILE *fp = fopen(FILENAME, "ab"); /* binary append */
+    struct Address addr;
+
+    if (fp == NULL) {
+        printf("No address book found. Create it first.\n");
+        return;
+    }
+
+    read_line("Enter Name  : ", addr.name, sizeof(addr.name));
+    read_line("Enter Phone : ", addr.phone, sizeof(addr.phone));
+    read_line("Enter Email : ", addr.email, sizeof(addr.email));
+
+    if (fwrite(&addr, sizeof(addr), 1, fp) != 1) {
+        perror("Error writing record");
+    } else {
+        printf("Record inserted successfully.\n");
+    }
+    fclose(fp);
+}
+
+void deleteRecord() {
+    struct Address addr;
+    char name[50];
+    int found = 0;
+
+    FILE *fp = fopen(FILENAME, "rb");
+    if (fp == NULL) {
+        printf("No address book found.\n");
+        return;
+    }
+
+    FILE *temp = fopen("temp.dat", "wb");
+    if (temp == NULL) {
+        perror("Error opening temporary file");
+        fclose(fp);
+        return;
+    }
+
+    read_line("Enter name to delete: ", name, sizeof(name));
+
+    while (fread(&addr, sizeof(addr), 1, fp) == 1) {
+        if (strcmp(addr.name, name) != 0) {
+            fwrite(&addr, sizeof(addr), 1, temp);
+        } else {
+            found = 1;
+        }
+    }
+
+    fclose(fp);
+    fclose(temp);
+
+    if (remove(FILENAME) != 0) {
+        perror("Error removing original file");
+    } else if (rename("temp.dat", FILENAME) != 0) {
+        perror("Error renaming temporary file");
+    }
+
+    if (found)
+        printf("Record deleted successfully.\n");
+    else
+        printf("Record not found.\n");
+}
+
+void modifyRecord() {
+    struct Address addr;
+    char name[50];
+    int found = 0;
+
+    FILE *fp = fopen(FILENAME, "r+b"); /* open for read/write in binary */
+    if (fp == NULL) {
+        printf("No address book found.\n");
+        return;
+    }
+
+    read_line("Enter name to modify: ", name, sizeof(name));
+
+    while (fread(&addr, sizeof(addr), 1, fp) == 1) {
+        if (strcmp(addr.name, name) == 0) {
+            read_line("Enter new Name  : ", addr.name, sizeof(addr.name));
+            read_line("Enter new Phone : ", addr.phone, sizeof(addr.phone));
+            read_line("Enter new Email : ", addr.email, sizeof(addr.email));
+
+            /* move file pointer back one record and overwrite */
+            if (fseek(fp, - (long)sizeof(addr), SEEK_CUR) != 0) {
+                perror("fseek failed");
+                break;
+            }
+            if (fwrite(&addr, sizeof(addr), 1, fp) != 1) {
+                perror("fwrite failed");
+            } else {
+                printf("Record modified successfully.\n");
+                found = 1;
+            }
+            break;
+        }
+    }
+
+    if (!found)
+        printf("Record not found.\n");
+
+    fclose(fp);
+}
